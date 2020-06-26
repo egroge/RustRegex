@@ -19,9 +19,11 @@ fn lex_class(s: &str) -> (String, Vec<Lexeme>) {
         match c {
             ']' => return (s[i..].to_string(), lexed),
             '\\' => {
-                i += 1;
-                backslash = true;
-                continue;
+                if !backslash {
+                    i += 1;
+                    backslash = true;
+                    continue;
+                }
             }
             _ => (),
         }
@@ -70,12 +72,19 @@ fn lex(s: &str) -> Vec<Lexeme> {
         }
 
         i += 1;
-        if c == '\\' {
+        if !backslash && c == '\\' {
             backslash = true;
             continue;
         }
 
         let lexeme = match c {
+            'w' | 'W' | 'b' | 'B' | 'd' | 'D' | 's' | 'S' => {
+                if backslash {
+                    Meta(c)
+                } else {
+                    Ch(c)
+                }
+            }
             '(' => LRound,
             ')' => RRound,
             // TODO this is bad, but should work because already checked
@@ -130,7 +139,7 @@ mod tests {
             let lexed = lex("yee+t");
             assert_eq!(lexed, vec![Ch('y'), Ch('e'), Ch('e'), Op('+'), Ch('t')]);
 
-            let lexed = lex("g[A-Za-z+0-9.]+@.");
+            let lexed = lex("g[A-Z+.]+.");
             assert_eq!(
                 lexed,
                 vec![
@@ -139,22 +148,15 @@ mod tests {
                     Ch('A'),
                     Op('-'),
                     Ch('Z'),
-                    Ch('a'),
-                    Op('-'),
-                    Ch('z'),
                     Ch('+'),
-                    Ch('0'),
-                    Op('-'),
-                    Ch('9'),
                     Ch('.'),
                     RSquare,
                     Op('+'),
-                    Ch('@'),
                     Meta('.')
                 ]
             );
 
-            let lexed = lex(r"h?m+\.@[\w]\?[\d]?");
+            let lexed = lex(r"h?m+\.[\w]\?[\d]?");
             assert_eq!(
                 lexed,
                 vec![
@@ -163,7 +165,6 @@ mod tests {
                     Ch('m'),
                     Op('+'),
                     Ch('.'),
-                    Ch('@'),
                     LSquare,
                     Meta('w'),
                     RSquare,
@@ -193,6 +194,9 @@ mod tests {
 
             let lexed = lex("h[");
             assert_eq!(lexed, vec![Ch('h'), LSquare]);
+
+            let lexed = lex(r"h\\h\w");
+            assert_eq!(lexed, vec![Ch('h'), Ch('\\'), Ch('h'), Meta('w')]);
         }
     }
 }
