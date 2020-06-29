@@ -18,9 +18,14 @@ type Expr = Vec<Term>;
 #[derive(Debug, PartialEq)]
 enum Term {
     TAtom(Atom),
-    Plus,
-    Star,
-    Questioned,
+    TOp(Operation),
+}
+
+#[derive(Debug, PartialEq)]
+enum Operation {
+    Plus(Atom),
+    Star(Atom),
+    Questioned(Atom),
 }
 
 #[derive(Debug, PartialEq)]
@@ -137,6 +142,19 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
         LRound => Ok((vec![], ACh('q'))), // dummy value for now
         _ => Err("Non atom")?,
     };
+}
+
+fn parse_operation(
+    lexed: Vec<Lexeme>,
+) -> Result<(Vec<Lexeme>, Box<dyn Fn(Atom) -> Operation>), &'static str> {
+    let remaining = lexed[1..].to_vec();
+    match lexed[0] {
+        Op('+') => Ok((remaining, Box::new(|a| Operation::Plus(a)))),
+        Op('?') => Ok((remaining, Box::new(|a| Operation::Questioned(a)))),
+        Op('*') => Ok((remaining, Box::new(|a| Operation::Star(a)))),
+        Op(_) => Err("Unsupported operation"),
+        _ => Err("Not an operation"),
+    }
 }
 
 fn lex_class(s: &str) -> (u32, Vec<Lexeme>) {
@@ -384,6 +402,27 @@ mod tests {
                 atom,
                 Class(true, AllowedChars::Restricted(disallowed_chars))
             );
+        }
+
+        fn parse_operation_test() {
+            let results = [Op('*'), Op('?'), Op('+')]
+                .iter()
+                .map(|op| parse_operation(vec![op.clone()]).expect("Parse failed").1)
+                .map(|f| f(ACh('a')))
+                .collect::<Vec<Operation>>();
+
+            assert_eq!(
+                vec![
+                    Operation::Star(ACh('a')),
+                    Operation::Questioned(ACh('a')),
+                    Operation::Plus(ACh('a'))
+                ],
+                results
+            );
+        }
+
+        fn parse_term(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Term), &'static str> {
+            Err("Not yet implemented")
         }
     }
 
