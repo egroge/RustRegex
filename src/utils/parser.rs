@@ -7,7 +7,7 @@ use Atom::*;
 type Expr = Vec<Term>;
 
 #[derive(Debug, PartialEq)]
-enum Term {
+pub enum Term {
     TAtom(Atom),
     TOp(Operation),
 }
@@ -29,7 +29,7 @@ enum AllowedChars {
 enum Atom {
     ACh(char),
     Class(bool, AllowedChars),
-    SubExpr(bool, Expr),
+    SubExpr(Expr), // Does not currently support non capture groups
 }
 
 fn parse_range(lexed: &Vec<Lexeme>) -> Option<HashSet<char>> {
@@ -46,6 +46,8 @@ fn parse_range(lexed: &Vec<Lexeme>) -> Option<HashSet<char>> {
     None
 }
 
+// TODO change everything that returns a skipped number and replace with just returning the
+// remaining lexeme stream
 fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(u32, HashSet<char>), &'static str> {
     let digits = (0..10)
         .map(|x| std::char::from_digit(x, 10).unwrap())
@@ -112,7 +114,7 @@ fn parse_character_class(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'st
 
 fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
     use Atom::*;
-    return match &lexed[0] {
+    match &lexed[0] {
         LSquare => Ok(parse_character_class(lexed[1..].to_vec())?),
         Ch(c) => Ok((lexed[1..].to_vec(), ACh(*c))),
         Meta(c) => {
@@ -129,9 +131,12 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
                 ))
             };
         }
-        LRound => Err("Sub expressions not yet implemented"), // dummy value for now
+        LRound => {
+            let (remaining, expr) = parse_expression(lexed[1..].to_vec())?;
+            Ok((remaining, SubExpr(expr)))
+        }
         _ => Err("Non atom found")?,
-    };
+    }
 }
 
 fn parse_operation(
@@ -184,6 +189,16 @@ fn parse_expression(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Expr), &'static 
     }
 
     Ok((lexed, expr))
+}
+
+pub fn parse(lexed: Vec<Lexeme>) -> Result<Expr, &'static str> {
+    let (remaining, parsed) = parse_expression(lexed)?;
+
+    if !remaining.is_empty() {
+        return Err("Some of expression was left over after parsing. Is it malformed?");
+    } else {
+        return Ok(parsed);
+    }
 }
 
 #[cfg(test)]
@@ -302,6 +317,30 @@ mod tests {
                 atom,
                 Class(true, AllowedChars::Restricted(disallowed_chars))
             );
+
+            // Extended tests for parsing subexpressions
+            let (remaining, subexpr) = parse_atom(vec![
+                LRound,
+                Ch('I'),
+                Ch('C'),
+                Ch('L'),
+                Op('?'),
+                RRound,
+                Op('?'),
+            ])
+            .expect("Failure parsing subexpression");
+
+            use Operation::*;
+            use Term::*;
+
+            let expected_expr = SubExpr(vec![
+                TAtom(ACh('I')),
+                TAtom(ACh('C')),
+                TOp(Questioned(ACh('L'))),
+            ]);
+
+            assert_eq!(remaining, vec![Op('?')]);
+            assert_eq!(subexpr, expected_expr);
         }
 
         #[test]
@@ -369,9 +408,43 @@ mod tests {
             assert_eq!(remaining, vec![Ch('a')]);
             assert_eq!(expr, expected_expr);
 
-            let (remaining, expr) = parse_expression(remaining).expect("Failure paring single char expression");
+            let (remaining, expr) =
+                parse_expression(remaining).expect("Failure paring single char expression");
             assert!(remaining.is_empty());
             assert_eq!(expr, vec![TAtom(ACh('a'))]);
+        }
+
+        #[test]
+        fn parse_test() {
+            use Atom::*;
+            use Operation::*;
+            use Term::*;
+
+            let expr = parse(vec![
+                Meta('s'),
+                LRound,
+                Ch('I'),
+                Ch('C'),
+                Ch('L'),
+                Op('?'),
+                RRound,
+                Op('*'),
+            ])
+            .expect("Failure parsing expression");
+
+            let expected_expr = vec![
+                TAtom(Class(
+                    false,
+                    AllowedChars::Restricted(" \t".chars().collect::<HashSet<char>>()),
+                )),
+                TOp(Star(SubExpr(vec![
+                    TAtom(ACh('I')),
+                    TAtom(ACh('C')),
+                    TOp(Questioned(ACh('L'))),
+                ]))),
+            ];
+
+            assert_eq!(expr, expected_expr);
         }
     }
 }
