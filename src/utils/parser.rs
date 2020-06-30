@@ -129,8 +129,8 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
                 ))
             };
         }
-        LRound => Ok((vec![], ACh('q'))), // dummy value for now
-        _ => Err("Non atom")?,
+        LRound => Err("Sub expressions not yet implemented"), // dummy value for now
+        _ => Err("Non atom found")?,
     };
 }
 
@@ -138,6 +138,7 @@ fn parse_operation(
     lexed: Vec<Lexeme>,
 ) -> Result<(Vec<Lexeme>, Box<dyn Fn(Atom) -> Operation>), &'static str> {
     let remaining = lexed[1..].to_vec();
+
     match lexed[0] {
         Op('+') => Ok((remaining, Box::new(|a| Operation::Plus(a)))),
         Op('?') => Ok((remaining, Box::new(|a| Operation::Questioned(a)))),
@@ -145,6 +146,44 @@ fn parse_operation(
         Op(_) => Err("Unsupported operation"),
         _ => Err("Not an operation"),
     }
+}
+
+fn parse_term(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Term), &'static str> {
+    assert!(!lexed.is_empty());
+
+    let (remaining, atom) = parse_atom(lexed)?;
+
+    if remaining.is_empty() {
+        return Ok((remaining, Term::TAtom(atom)));
+    }
+
+    if let Op(_) = remaining[0] {
+        let (remaining, func) = parse_operation(remaining)?;
+        return Ok((remaining, Term::TOp(func(atom))));
+    }
+
+    Ok((remaining, Term::TAtom(atom)))
+}
+
+fn parse_expression(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Expr), &'static str> {
+    // NOTE: If this is called due to a subexpr, the LRound starting it should already have been removed
+    let mut expr = vec![];
+    let mut lexed = lexed;
+
+    while !lexed.is_empty() {
+        if let RRound = lexed[0] {
+            return Ok((lexed[1..].to_vec(), expr));
+        }
+
+        // Unfortunately rust does not yet support the more elegant pattern matched version of
+        // this
+        let term = parse_term(lexed)?;
+        lexed = term.0;
+        let term = term.1;
+        expr.push(term);
+    }
+
+    Ok((lexed, expr))
 }
 
 #[cfg(test)]
@@ -204,15 +243,10 @@ mod tests {
             let (remaining, class) =
                 parse_character_class(vec![Ch('?'), Ch('a'), Op('-'), Ch('d'), RSquare, Ch('r')])
                     .expect("Failure with char class");
-            assert_eq!(remaining, vec![Ch('r')]);
-            let allowed = "?abcd".chars().collect::<HashSet<char>>();
 
-            if let Class(b, AllowedChars::Restricted(chars)) = class {
-                assert!(!b);
-                assert_eq!(chars, allowed);
-            } else {
-                panic!("Incorrect pattern");
-            }
+            let allowed = "?abcd".chars().collect::<HashSet<char>>();
+            assert_eq!(remaining, vec![Ch('r')]);
+            assert_eq!(class, Class(false, AllowedChars::Restricted(allowed)));
         }
 
         #[test]
@@ -239,16 +273,7 @@ mod tests {
             let (remaining, atom) = parse_atom(remaining).expect("Failure parsing char class");
             assert!(remaining.is_empty());
 
-            // TODO this is unsatisfying, I would prefer commented line after this but for some reason that doesnt
-            // seem to agree on equality
-            if let Class(b, AllowedChars::Restricted(actual_chars)) = atom {
-                assert!(!b);
-                assert_eq!(actual_chars, expected_range);
-            } else {
-                panic!("Did not return character class");
-            }
-
-            // assert_eq!(atom, Class(false, AllowedChars::Restricted(expected_range)));
+            assert_eq!(atom, Class(false, AllowedChars::Restricted(expected_range)));
 
             let (remaining, atom) = parse_atom(vec![
                 Meta('.'),
@@ -279,6 +304,7 @@ mod tests {
             );
         }
 
+        #[test]
         fn parse_operation_test() {
             let results = [Op('*'), Op('?'), Op('+')]
                 .iter()
@@ -296,8 +322,56 @@ mod tests {
             );
         }
 
-        fn parse_term(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Term), &'static str> {
-            Err("Not yet implemented")
+        #[test]
+        fn parse_term_test() {
+            use Operation::*;
+            use Term::*;
+            let (remaining, atom) = parse_term(vec![Meta('w'), Op('*'), Meta('.')])
+                .expect("Failure parsing meta char star");
+            let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                .chars()
+                .collect::<HashSet<char>>();
+
+            assert_eq!(remaining, vec![Meta('.')]);
+            assert_eq!(
+                atom,
+                TOp(Star(Class(false, AllowedChars::Restricted(expected_range))))
+            );
+        }
+
+        #[test]
+        fn parse_expr_test() {
+            use Atom::*;
+            use Operation::*;
+            use Term::*;
+
+            let (remaining, expr) = parse_expression(vec![
+                Ch('a'),
+                LSquare,
+                Ch('0'),
+                Op('-'),
+                Ch('2'),
+                RSquare,
+                Op('+'),
+                RRound,
+                Ch('a'),
+            ])
+            .expect("Failure parsing expression");
+
+            let expected_expr = vec![
+                TAtom(ACh('a')),
+                TOp(Plus(Class(
+                    false,
+                    AllowedChars::Restricted("012".chars().collect::<HashSet<char>>()),
+                ))),
+            ];
+
+            assert_eq!(remaining, vec![Ch('a')]);
+            assert_eq!(expr, expected_expr);
+
+            let (remaining, expr) = parse_expression(remaining).expect("Failure paring single char expression");
+            assert!(remaining.is_empty());
+            assert_eq!(expr, vec![TAtom(ACh('a'))]);
         }
     }
 }
