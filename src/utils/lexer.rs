@@ -12,15 +12,13 @@ pub enum Lexeme {
     RRound,
 }
 
-fn lex_class(s: &str) -> Result<(u32, Vec<Lexeme>), &'static str> {
+fn lex_class(s: &str) -> Result<(String, Vec<Lexeme>), &'static str> {
     let mut lexed: Vec<Lexeme> = vec![];
-    let mut i = 0;
-
     let mut iterator = s.chars();
 
     while let Some(c) = iterator.next() {
         match c {
-            ']' => return Ok((i, lexed)),
+            ']' => return Ok(("]".to_string() + iterator.as_str(), lexed)),
             '\\' => match iterator.next() {
                 Some(next) => {
                     if "wbdsWBDS".contains(next) {
@@ -28,15 +26,12 @@ fn lex_class(s: &str) -> Result<(u32, Vec<Lexeme>), &'static str> {
                     } else {
                         lexed.push(Ch(next));
                     }
-                    i += 2;
                     continue;
                 }
                 None => return Err("Class cannot end with single backslash"),
             },
             _ => (),
         };
-
-        i += 1;
 
         let lexeme = match c {
             '-' | '^' => Op(c),
@@ -46,43 +41,40 @@ fn lex_class(s: &str) -> Result<(u32, Vec<Lexeme>), &'static str> {
         lexed.push(lexeme);
     }
 
-    Ok((i, lexed))
+    Ok((String::new(), lexed))
 }
 
 pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
     let mut lexed: Vec<Lexeme> = vec![];
-    let mut backslash = false;
-
     let mut bracket_stack = VecDeque::new();
-    let s: Vec<char> = s.chars().collect();
 
-    let mut i = 0;
-    while i < s.len() {
-        let c = s[i];
-        i += 1;
-        if backslash {
-            if "wbdsWBDS".contains(c) {
-                lexed.push(Meta(c));
-            } else {
-                lexed.push(Ch(c));
-            }
-            backslash = false;
-            continue;
-        }
+    let mut s = s.to_string();
+    let mut iterator = s.chars();
 
-        assert!(!backslash);
-
+    while let Some(c) = iterator.next() {
         if c == '[' {
             lexed.push(LSquare);
             bracket_stack.push_back(LSquare);
-            let (skipped, subclass) = lex_class(s[i..].iter().collect::<String>().as_str())?;
+
+            let (remainder, subclass) = lex_class(iterator.as_str())?;
             lexed.extend(subclass);
-            i += skipped as usize;
+            s = remainder.clone(); // TODO this is unsatisfactory. Probably a fix with lifetimes
+            iterator = s.chars();
+
             continue;
         }
 
         if c == '\\' {
-            backslash = true;
+            match iterator.next() {
+                Some(next) => {
+                    if "wbdsWBDS".contains(next) {
+                        lexed.push(Meta(next));
+                    } else {
+                        lexed.push(Ch(next));
+                    }
+                }
+                None => return Err("Class cannot end with single backslash"),
+            }
             continue;
         }
 
@@ -113,7 +105,6 @@ pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
         };
 
         lexed.push(lexeme);
-        backslash = false;
     }
     if !bracket_stack.is_empty() {
         Err("Mismatched brackets")
@@ -130,18 +121,18 @@ mod lexing_tests {
     #[test]
     fn lex_class_test() {
         let (remains, lexed) = lex_class("A-Za-z").expect("Failure lexing");
-        assert_eq!(remains, 6);
+        assert_eq!(remains, String::new());
         assert_eq!(
             lexed,
             vec![Ch('A'), Op('-'), Ch('Z'), Ch('a'), Op('-'), Ch('z')]
         );
 
         let (remains, lexed) = lex_class("A-Z_]world").expect("Failure lexing");
-        assert_eq!(remains, 4);
+        assert_eq!(remains, String::from("]world"));
         assert_eq!(lexed, vec![Ch('A'), Op('-'), Ch('Z'), Ch('_')]);
 
         let (remains, lexed) = lex_class(r"\w]hmm").expect("Failure lexing");
-        assert_eq!(remains, 2);
+        assert_eq!(remains, String::from("]hmm"));
         assert_eq!(lexed, vec![Meta('w')]);
     }
 
