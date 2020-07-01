@@ -12,33 +12,29 @@ pub enum Lexeme {
     RRound,
 }
 
-fn lex_class(s: &str) -> (u32, Vec<Lexeme>) {
-    let mut backslash = false;
+fn lex_class(s: &str) -> Result<(u32, Vec<Lexeme>), &'static str> {
     let mut lexed: Vec<Lexeme> = vec![];
     let mut i = 0;
 
-    for c in s.chars() {
-        if backslash {
-            if "wbdsWBDS".contains(c) {
-                lexed.push(Meta(c));
-            } else {
-                lexed.push(Ch(c));
-            }
-            i += 1;
-            backslash = false;
-            continue;
-        }
-        assert!(!backslash);
+    let mut iterator = s.chars();
 
+    while let Some(c) = iterator.next() {
         match c {
-            ']' => return (i, lexed),
-            '\\' => {
-                i += 1;
-                backslash = true;
-                continue;
-            }
+            ']' => return Ok((i, lexed)),
+            '\\' => match iterator.next() {
+                Some(next) => {
+                    if "wbdsWBDS".contains(next) {
+                        lexed.push(Meta(next));
+                    } else {
+                        lexed.push(Ch(next));
+                    }
+                    i += 2;
+                    continue;
+                }
+                None => return Err("Class cannot end with single backslash"),
+            },
             _ => (),
-        }
+        };
 
         i += 1;
 
@@ -48,10 +44,9 @@ fn lex_class(s: &str) -> (u32, Vec<Lexeme>) {
         };
 
         lexed.push(lexeme);
-        backslash = false;
     }
 
-    (i, lexed)
+    Ok((i, lexed))
 }
 
 pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
@@ -80,7 +75,7 @@ pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
         if c == '[' {
             lexed.push(LSquare);
             bracket_stack.push_back(LSquare);
-            let (skipped, subclass) = lex_class(s[i..].iter().collect::<String>().as_str());
+            let (skipped, subclass) = lex_class(s[i..].iter().collect::<String>().as_str())?;
             lexed.extend(subclass);
             i += skipped as usize;
             continue;
@@ -134,16 +129,20 @@ mod lexing_tests {
 
     #[test]
     fn lex_class_test() {
-        let (remains, lexed) = lex_class("A-Za-z");
+        let (remains, lexed) = lex_class("A-Za-z").expect("Failure lexing");
         assert_eq!(remains, 6);
         assert_eq!(
             lexed,
             vec![Ch('A'), Op('-'), Ch('Z'), Ch('a'), Op('-'), Ch('z')]
         );
 
-        let (remains, lexed) = lex_class("A-Z_]world");
+        let (remains, lexed) = lex_class("A-Z_]world").expect("Failure lexing");
         assert_eq!(remains, 4);
         assert_eq!(lexed, vec![Ch('A'), Op('-'), Ch('Z'), Ch('_')]);
+
+        let (remains, lexed) = lex_class(r"\w]hmm").expect("Failure lexing");
+        assert_eq!(remains, 2);
+        assert_eq!(lexed, vec![Meta('w')]);
     }
 
     #[test]
