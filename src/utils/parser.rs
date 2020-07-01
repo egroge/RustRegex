@@ -46,9 +46,7 @@ fn parse_range(lexed: &Vec<Lexeme>) -> Option<HashSet<char>> {
     None
 }
 
-// TODO change everything that returns a skipped number and replace with just returning the
-// remaining lexeme stream
-fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(u32, HashSet<char>), &'static str> {
+fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(Vec<Lexeme>, HashSet<char>), &'static str> {
     let digits = (0..10)
         .map(|x| std::char::from_digit(x, 10).unwrap())
         .collect();
@@ -61,22 +59,22 @@ fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(u32, HashSet<char>), &'sta
         // Possible that there is a range
         let possible_range = parse_range(&lexed);
         if possible_range.is_some() {
-            return Ok((3, possible_range.unwrap()));
+            return Ok((lexed[3..].to_vec(), possible_range.unwrap()));
         }
     }
 
     // Cannot be a range, so must be a single char
-    let tokens_used = 1;
+    let remaining = lexed[1..].to_vec();
     match &lexed[0] {
-        RSquare => Ok((tokens_used, HashSet::new())),
+        RSquare => Ok((remaining, HashSet::new())),
         Meta(c) => match c {
-            'd' => Ok((tokens_used, digits)),
-            's' => Ok((tokens_used, [' ', '\t'].iter().cloned().collect())), // idk what else
-            'w' => Ok((tokens_used, digits.union(&latin).cloned().collect())),
-            'b' => Ok((tokens_used, ['\n'].iter().cloned().collect())), // pretty sure this is wrong
+            'd' => Ok((remaining, digits)),
+            's' => Ok((remaining, [' ', '\t'].iter().cloned().collect())), // idk what else
+            'w' => Ok((remaining, digits.union(&latin).cloned().collect())),
+            'b' => Ok((remaining, ['\n'].iter().cloned().collect())), // pretty sure this is wrong
             _ => Err("Unknown meta token in character class!"),
         },
-        Ch(c) => Ok((tokens_used, [*c].iter().cloned().collect())),
+        Ch(c) => Ok((remaining, [*c].iter().cloned().collect())),
         t => {
             println!("Token: {:?}", t);
             Err("Misplaced token in character class!")
@@ -99,15 +97,14 @@ fn parse_character_class(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'st
 
     // Should not have to check i < len() since bracketing should be correct
     let mut all_chars = HashSet::new();
-    let mut i = 0;
-    while lexed[i] != RSquare {
-        let (skipped, chars) = parse_class_member(&lexed[i..].to_vec())?;
-        i += skipped as usize;
+    while lexed[0] != RSquare {
+        let (remaining, chars) = parse_class_member(&lexed)?;
+        lexed = remaining;
         all_chars.extend(chars);
     }
 
     Ok((
-        lexed[i + 1..].to_vec(),
+        lexed[1..].to_vec(),
         Class(inverted, AllowedChars::Restricted(all_chars)),
     ))
 }
@@ -124,11 +121,8 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
                     Class(false, AllowedChars::Unrestricted),
                 ))
             } else {
-                let (skipped, chars) = parse_class_member(&lexed)?;
-                Ok((
-                    lexed[skipped as usize..].to_vec(),
-                    Class(false, AllowedChars::Restricted(chars)),
-                ))
+                let (remaining, chars) = parse_class_member(&lexed)?;
+                Ok((remaining, Class(false, AllowedChars::Restricted(chars))))
             };
         }
         LRound => {
@@ -217,24 +211,24 @@ mod tests {
 
     #[test]
     fn parse_class_member_test() {
-        let (skipped, chars) = parse_class_member(&vec![Ch('m')]).expect("Failure");
-        assert_eq!(skipped, 1);
+        let (remaining, chars) = parse_class_member(&vec![Ch('m')]).expect("Failure");
+        assert_eq!(remaining, vec![]);
         assert_eq!(chars, ['m'].iter().cloned().collect());
 
-        let (skipped, chars) = parse_class_member(&vec![Meta('w')]).expect("Failure");
+        let (remaining, chars) = parse_class_member(&vec![Meta('w')]).expect("Failure");
         let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             .chars()
             .collect::<HashSet<char>>();
-        assert_eq!(skipped, 1);
+        assert_eq!(remaining, vec![]);
         assert_eq!(chars, expected_range);
 
         let expected_range = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
             .chars()
             .collect::<HashSet<char>>();
-        let (skipped, chars) =
-            parse_class_member(&vec![Ch('A'), Op('-'), Ch('Z')]).expect("Failure");
+        let (remaining, chars) =
+            parse_class_member(&vec![Ch('A'), Op('-'), Ch('Z'), Ch('m')]).expect("Failure");
 
-        assert_eq!(skipped, 3);
+        assert_eq!(remaining, vec![Ch('m')]);
         assert_eq!(chars, expected_range);
 
         let result = parse_class_member(&vec![Meta('z'), Ch('o'), Ch('d')]);
