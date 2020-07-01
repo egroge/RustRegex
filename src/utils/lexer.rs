@@ -12,7 +12,7 @@ pub enum Lexeme {
     RRound,
 }
 
-pub fn lex_class(s: &str) -> (u32, Vec<Lexeme>) {
+fn lex_class(s: &str) -> (u32, Vec<Lexeme>) {
     let mut backslash = false;
     let mut lexed: Vec<Lexeme> = vec![];
     let mut i = 0;

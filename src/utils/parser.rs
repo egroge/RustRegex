@@ -1,4 +1,4 @@
-mod lexer;
+use crate::lexer;
 
 use lexer::{Lexeme, Lexeme::*};
 use std::collections::HashSet;
@@ -203,248 +203,243 @@ pub fn parse(lexed: Vec<Lexeme>) -> Result<Expr, &'static str> {
 
 #[cfg(test)]
 mod tests {
-    mod parser_tests {
-        use super::super::*;
+    use super::*;
 
-        #[test]
-        fn parse_range_test() {
-            let possible_range = parse_range(&vec![Ch('A'), Op('-'), Ch('Z')]);
-            let expected_range = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
-            assert_eq!(possible_range, Some(expected_range));
+    #[test]
+    fn parse_range_test() {
+        let possible_range = parse_range(&vec![Ch('A'), Op('-'), Ch('Z')]);
+        let expected_range = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars().collect();
+        assert_eq!(possible_range, Some(expected_range));
 
-            let possible_range = parse_range(&vec![Ch('a'), Ch('-'), Ch('z')]);
-            assert!(possible_range.is_none());
-        }
+        let possible_range = parse_range(&vec![Ch('a'), Ch('-'), Ch('z')]);
+        assert!(possible_range.is_none());
+    }
 
-        #[test]
-        fn parse_class_member_test() {
-            let (skipped, chars) = parse_class_member(&vec![Ch('m')]).expect("Failure");
-            assert_eq!(skipped, 1);
-            assert_eq!(chars, ['m'].iter().cloned().collect());
+    #[test]
+    fn parse_class_member_test() {
+        let (skipped, chars) = parse_class_member(&vec![Ch('m')]).expect("Failure");
+        assert_eq!(skipped, 1);
+        assert_eq!(chars, ['m'].iter().cloned().collect());
 
-            let (skipped, chars) = parse_class_member(&vec![Meta('w')]).expect("Failure");
-            let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                .chars()
-                .collect::<HashSet<char>>();
-            assert_eq!(skipped, 1);
-            assert_eq!(chars, expected_range);
+        let (skipped, chars) = parse_class_member(&vec![Meta('w')]).expect("Failure");
+        let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            .chars()
+            .collect::<HashSet<char>>();
+        assert_eq!(skipped, 1);
+        assert_eq!(chars, expected_range);
 
-            let expected_range = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                .chars()
-                .collect::<HashSet<char>>();
-            let (skipped, chars) =
-                parse_class_member(&vec![Ch('A'), Op('-'), Ch('Z')]).expect("Failure");
+        let expected_range = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            .chars()
+            .collect::<HashSet<char>>();
+        let (skipped, chars) =
+            parse_class_member(&vec![Ch('A'), Op('-'), Ch('Z')]).expect("Failure");
 
-            assert_eq!(skipped, 3);
-            assert_eq!(chars, expected_range);
+        assert_eq!(skipped, 3);
+        assert_eq!(chars, expected_range);
 
-            let result = parse_class_member(&vec![Meta('z'), Ch('o'), Ch('d')]);
-            assert!(result.is_err());
-        }
+        let result = parse_class_member(&vec![Meta('z'), Ch('o'), Ch('d')]);
+        assert!(result.is_err());
+    }
 
-        #[test]
-        fn parse_class_test() {
-            let (remaining, class) =
-                parse_character_class(vec![Op('^'), Ch(')'), Ch('8'), RSquare])
-                    .expect("Failure with char class");
+    #[test]
+    fn parse_class_test() {
+        let (remaining, class) = parse_character_class(vec![Op('^'), Ch(')'), Ch('8'), RSquare])
+            .expect("Failure with char class");
 
-            let disallowed_chars = "8)".chars().collect::<HashSet<char>>();
-            assert!(remaining.is_empty());
-            assert_eq!(
-                class,
-                Class(true, AllowedChars::Restricted(disallowed_chars))
-            );
+        let disallowed_chars = "8)".chars().collect::<HashSet<char>>();
+        assert!(remaining.is_empty());
+        assert_eq!(
+            class,
+            Class(true, AllowedChars::Restricted(disallowed_chars))
+        );
 
-            let (remaining, class) =
-                parse_character_class(vec![Ch('?'), Ch('a'), Op('-'), Ch('d'), RSquare, Ch('r')])
-                    .expect("Failure with char class");
+        let (remaining, class) =
+            parse_character_class(vec![Ch('?'), Ch('a'), Op('-'), Ch('d'), RSquare, Ch('r')])
+                .expect("Failure with char class");
 
-            let allowed = "?abcd".chars().collect::<HashSet<char>>();
-            assert_eq!(remaining, vec![Ch('r')]);
-            assert_eq!(class, Class(false, AllowedChars::Restricted(allowed)));
-        }
+        let allowed = "?abcd".chars().collect::<HashSet<char>>();
+        assert_eq!(remaining, vec![Ch('r')]);
+        assert_eq!(class, Class(false, AllowedChars::Restricted(allowed)));
+    }
 
-        #[test]
-        fn parse_atom_test() {
-            let (remaining, atom) = parse_atom(vec![Meta('w')]).expect("Failure parsing meta char");
-            let mut expected_range =
-                "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                    .chars()
-                    .collect::<HashSet<char>>();
+    #[test]
+    fn parse_atom_test() {
+        let (remaining, atom) = parse_atom(vec![Meta('w')]).expect("Failure parsing meta char");
+        let mut expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            .chars()
+            .collect::<HashSet<char>>();
 
-            assert!(remaining.is_empty());
-            assert_eq!(
-                atom,
-                Class(false, AllowedChars::Restricted(expected_range.clone()))
-            );
+        assert!(remaining.is_empty());
+        assert_eq!(
+            atom,
+            Class(false, AllowedChars::Restricted(expected_range.clone()))
+        );
 
-            let (remaining, atom) = parse_atom(vec![Ch('a'), LSquare, Meta('w'), Ch('?'), RSquare])
-                .expect("Failure parsing char");
+        let (remaining, atom) = parse_atom(vec![Ch('a'), LSquare, Meta('w'), Ch('?'), RSquare])
+            .expect("Failure parsing char");
 
-            expected_range.insert('?');
-            assert_eq!(remaining, vec![LSquare, Meta('w'), Ch('?'), RSquare]);
-            assert_eq!(atom, ACh('a'));
+        expected_range.insert('?');
+        assert_eq!(remaining, vec![LSquare, Meta('w'), Ch('?'), RSquare]);
+        assert_eq!(atom, ACh('a'));
 
-            let (remaining, atom) = parse_atom(remaining).expect("Failure parsing char class");
-            assert!(remaining.is_empty());
+        let (remaining, atom) = parse_atom(remaining).expect("Failure parsing char class");
+        assert!(remaining.is_empty());
 
-            assert_eq!(atom, Class(false, AllowedChars::Restricted(expected_range)));
+        assert_eq!(atom, Class(false, AllowedChars::Restricted(expected_range)));
 
-            let (remaining, atom) = parse_atom(vec![
-                Meta('.'),
-                LSquare,
-                Op('^'),
-                Ch(')'),
-                Ch('8'),
-                RSquare,
-                Op('*'),
-            ])
-            .expect("Failure parsing Unrestricted char");
+        let (remaining, atom) = parse_atom(vec![
+            Meta('.'),
+            LSquare,
+            Op('^'),
+            Ch(')'),
+            Ch('8'),
+            RSquare,
+            Op('*'),
+        ])
+        .expect("Failure parsing Unrestricted char");
 
-            assert_eq!(
-                remaining,
-                vec![LSquare, Op('^'), Ch(')'), Ch('8'), RSquare, Op('*')]
-            );
+        assert_eq!(
+            remaining,
+            vec![LSquare, Op('^'), Ch(')'), Ch('8'), RSquare, Op('*')]
+        );
 
-            assert_eq!(atom, Class(false, AllowedChars::Unrestricted));
+        assert_eq!(atom, Class(false, AllowedChars::Unrestricted));
 
-            let (remaining, atom) =
-                parse_atom(remaining).expect("Failure parsing inverted char class");
+        let (remaining, atom) = parse_atom(remaining).expect("Failure parsing inverted char class");
 
-            let disallowed_chars = ")8".chars().collect();
-            assert_eq!(remaining, vec![Op('*')]);
-            assert_eq!(
-                atom,
-                Class(true, AllowedChars::Restricted(disallowed_chars))
-            );
+        let disallowed_chars = ")8".chars().collect();
+        assert_eq!(remaining, vec![Op('*')]);
+        assert_eq!(
+            atom,
+            Class(true, AllowedChars::Restricted(disallowed_chars))
+        );
 
-            // Extended tests for parsing subexpressions
-            let (remaining, subexpr) = parse_atom(vec![
-                LRound,
-                Ch('I'),
-                Ch('C'),
-                Ch('L'),
-                Op('?'),
-                RRound,
-                Op('?'),
-            ])
-            .expect("Failure parsing subexpression");
+        // Extended tests for parsing subexpressions
+        let (remaining, subexpr) = parse_atom(vec![
+            LRound,
+            Ch('I'),
+            Ch('C'),
+            Ch('L'),
+            Op('?'),
+            RRound,
+            Op('?'),
+        ])
+        .expect("Failure parsing subexpression");
 
-            use Operation::*;
-            use Term::*;
+        use Operation::*;
+        use Term::*;
 
-            let expected_expr = SubExpr(vec![
+        let expected_expr = SubExpr(vec![
+            TAtom(ACh('I')),
+            TAtom(ACh('C')),
+            TOp(Questioned(ACh('L'))),
+        ]);
+
+        assert_eq!(remaining, vec![Op('?')]);
+        assert_eq!(subexpr, expected_expr);
+    }
+
+    #[test]
+    fn parse_operation_test() {
+        let results = [Op('*'), Op('?'), Op('+')]
+            .iter()
+            .map(|op| parse_operation(vec![op.clone()]).expect("Parse failed").1)
+            .map(|f| f(ACh('a')))
+            .collect::<Vec<Operation>>();
+
+        assert_eq!(
+            vec![
+                Operation::Star(ACh('a')),
+                Operation::Questioned(ACh('a')),
+                Operation::Plus(ACh('a'))
+            ],
+            results
+        );
+    }
+
+    #[test]
+    fn parse_term_test() {
+        use Operation::*;
+        use Term::*;
+        let (remaining, atom) = parse_term(vec![Meta('w'), Op('*'), Meta('.')])
+            .expect("Failure parsing meta char star");
+        let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            .chars()
+            .collect::<HashSet<char>>();
+
+        assert_eq!(remaining, vec![Meta('.')]);
+        assert_eq!(
+            atom,
+            TOp(Star(Class(false, AllowedChars::Restricted(expected_range))))
+        );
+    }
+
+    #[test]
+    fn parse_expr_test() {
+        use Atom::*;
+        use Operation::*;
+        use Term::*;
+
+        let (remaining, expr) = parse_expression(vec![
+            Ch('a'),
+            LSquare,
+            Ch('0'),
+            Op('-'),
+            Ch('2'),
+            RSquare,
+            Op('+'),
+            RRound,
+            Ch('a'),
+        ])
+        .expect("Failure parsing expression");
+
+        let expected_expr = vec![
+            TAtom(ACh('a')),
+            TOp(Plus(Class(
+                false,
+                AllowedChars::Restricted("012".chars().collect::<HashSet<char>>()),
+            ))),
+        ];
+
+        assert_eq!(remaining, vec![Ch('a')]);
+        assert_eq!(expr, expected_expr);
+
+        let (remaining, expr) =
+            parse_expression(remaining).expect("Failure paring single char expression");
+        assert!(remaining.is_empty());
+        assert_eq!(expr, vec![TAtom(ACh('a'))]);
+    }
+
+    #[test]
+    fn parse_test() {
+        use Atom::*;
+        use Operation::*;
+        use Term::*;
+
+        let expr = parse(vec![
+            Meta('s'),
+            LRound,
+            Ch('I'),
+            Ch('C'),
+            Ch('L'),
+            Op('?'),
+            RRound,
+            Op('*'),
+        ])
+        .expect("Failure parsing expression");
+
+        let expected_expr = vec![
+            TAtom(Class(
+                false,
+                AllowedChars::Restricted(" \t".chars().collect::<HashSet<char>>()),
+            )),
+            TOp(Star(SubExpr(vec![
                 TAtom(ACh('I')),
                 TAtom(ACh('C')),
                 TOp(Questioned(ACh('L'))),
-            ]);
+            ]))),
+        ];
 
-            assert_eq!(remaining, vec![Op('?')]);
-            assert_eq!(subexpr, expected_expr);
-        }
-
-        #[test]
-        fn parse_operation_test() {
-            let results = [Op('*'), Op('?'), Op('+')]
-                .iter()
-                .map(|op| parse_operation(vec![op.clone()]).expect("Parse failed").1)
-                .map(|f| f(ACh('a')))
-                .collect::<Vec<Operation>>();
-
-            assert_eq!(
-                vec![
-                    Operation::Star(ACh('a')),
-                    Operation::Questioned(ACh('a')),
-                    Operation::Plus(ACh('a'))
-                ],
-                results
-            );
-        }
-
-        #[test]
-        fn parse_term_test() {
-            use Operation::*;
-            use Term::*;
-            let (remaining, atom) = parse_term(vec![Meta('w'), Op('*'), Meta('.')])
-                .expect("Failure parsing meta char star");
-            let expected_range = "abcdefghijklmnopqrstuvwxyz0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                .chars()
-                .collect::<HashSet<char>>();
-
-            assert_eq!(remaining, vec![Meta('.')]);
-            assert_eq!(
-                atom,
-                TOp(Star(Class(false, AllowedChars::Restricted(expected_range))))
-            );
-        }
-
-        #[test]
-        fn parse_expr_test() {
-            use Atom::*;
-            use Operation::*;
-            use Term::*;
-
-            let (remaining, expr) = parse_expression(vec![
-                Ch('a'),
-                LSquare,
-                Ch('0'),
-                Op('-'),
-                Ch('2'),
-                RSquare,
-                Op('+'),
-                RRound,
-                Ch('a'),
-            ])
-            .expect("Failure parsing expression");
-
-            let expected_expr = vec![
-                TAtom(ACh('a')),
-                TOp(Plus(Class(
-                    false,
-                    AllowedChars::Restricted("012".chars().collect::<HashSet<char>>()),
-                ))),
-            ];
-
-            assert_eq!(remaining, vec![Ch('a')]);
-            assert_eq!(expr, expected_expr);
-
-            let (remaining, expr) =
-                parse_expression(remaining).expect("Failure paring single char expression");
-            assert!(remaining.is_empty());
-            assert_eq!(expr, vec![TAtom(ACh('a'))]);
-        }
-
-        #[test]
-        fn parse_test() {
-            use Atom::*;
-            use Operation::*;
-            use Term::*;
-
-            let expr = parse(vec![
-                Meta('s'),
-                LRound,
-                Ch('I'),
-                Ch('C'),
-                Ch('L'),
-                Op('?'),
-                RRound,
-                Op('*'),
-            ])
-            .expect("Failure parsing expression");
-
-            let expected_expr = vec![
-                TAtom(Class(
-                    false,
-                    AllowedChars::Restricted(" \t".chars().collect::<HashSet<char>>()),
-                )),
-                TOp(Star(SubExpr(vec![
-                    TAtom(ACh('I')),
-                    TAtom(ACh('C')),
-                    TOp(Questioned(ACh('L'))),
-                ]))),
-            ];
-
-            assert_eq!(expr, expected_expr);
-        }
+        assert_eq!(expr, expected_expr);
     }
 }
