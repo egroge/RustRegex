@@ -4,29 +4,29 @@ use lexer::{Lexeme, Lexeme::*};
 use std::collections::HashSet;
 use Atom::*;
 
-type Expr = Vec<Term>;
+pub type Expr = Vec<Term>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Term {
     TAtom(Atom),
     TOp(Operation),
 }
 
-#[derive(Debug, PartialEq)]
-enum Operation {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Operation {
     Plus(Atom),
     Star(Atom),
     Questioned(Atom),
 }
 
-#[derive(Debug, PartialEq)]
-enum AllowedChars {
+#[derive(Debug, PartialEq, Clone)]
+pub enum AllowedChars {
     Unrestricted,
     Restricted(HashSet<char>),
 }
 
-#[derive(Debug, PartialEq)]
-enum Atom {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Atom {
     ACh(char),
     Class(bool, AllowedChars),
     SubExpr(Expr), // Does not currently support non capture groups
