@@ -7,38 +7,44 @@ mod parser;
 #[path = "utils/matcher.rs"]
 mod matcher;
 
-pub fn search(regex: &str, search_space: &str) -> Option<(String, u32)> {
-    let lexed = lexer::lex(regex).expect("Unable to lex regex");
-    let regex = parser::parse(lexed).expect("Unable to parse regex");
-    Some(matcher::find(regex, search_space)?)
+pub fn search(regex: &parser::Expr, search_space: &str) -> Option<(String, u32)> {
+    matcher::find(regex, search_space)
+}
+
+pub fn compile_regex(regex_str: &str) -> parser::Expr {
+    let lexed = lexer::lex(regex_str).expect("Malformed regex");
+    parser::parse(lexed).expect("Malformed regex")
 }
 
 #[cfg(test)]
 mod full_test {
-    use super::search;
+    use super::{compile_regex, search};
 
     #[test]
     fn search_test() {
         assert_eq!(
-            search("yee*t", "better yet, jam!"),
+            search(&compile_regex("yee*t"), "better yet, jam!"),
             Some((String::from("yet"), 7))
         );
+
+        let kenobi_regex = compile_regex("(hello)? there[!?]*");
+
         assert_eq!(
-            search("(hello)? there[!?]*", "hello there. general kenobi."),
+            search(&kenobi_regex, "hello there. general kenobi."),
             Some((String::from("hello there"), 0))
         );
 
         assert_eq!(
-            search("(hello)? there[!?]*", "why hello there!!!. general kenobi."),
+            search(&kenobi_regex, "why hello there!!!. general kenobi."),
             Some((String::from("hello there!!!"), 4))
         );
 
         assert_eq!(
-            search("(hello)? there[!?]*", "is he there?! general kenobi."),
+            search(&kenobi_regex, "is he there?! general kenobi."),
             Some((String::from(" there?!"), 5))
         );
         assert_eq!(
-            search("(hello)? there[!?]*", "is he here?! general kenobi?"),
+            search(&kenobi_regex, "is he here?! general kenobi?"),
             None
         );
     }
