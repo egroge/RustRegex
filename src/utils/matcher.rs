@@ -95,13 +95,11 @@ fn match_regex(expr: &Expr, s: &str) -> Option<String> {
 }
 
 pub fn find(expr: &Expr, s: &str) -> Option<(String, u32)> {
-    let mut i = 0;
-    while i < s.len() {
+    for i in 0..s.len() {
         if let Some(matched) = match_regex(expr, &s[i..]) {
             return Some((matched, i as u32));
         }
 
-        i += 1;
     }
     None
 }
