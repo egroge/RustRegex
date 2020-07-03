@@ -50,8 +50,8 @@ fn match_op(op: &Operation, s: &str) -> Option<(String, String)> {
     match op {
         Plus(atom) => {
             let (first_match, remaining) = match_atom(atom, s)?;
-            let (other_matches, remaining) =
-                match_op(&Star(atom.clone()), remaining.as_str()).unwrap_or(("".to_string(), remaining));
+            let (other_matches, remaining) = match_op(&Star(atom.clone()), remaining.as_str())
+                .unwrap_or(("".to_string(), remaining));
             Some((first_match + &other_matches, remaining))
         }
         Star(atom) => {
@@ -68,9 +68,7 @@ fn match_op(op: &Operation, s: &str) -> Option<(String, String)> {
             }
             Some((matched.to_string(), remaining.to_string()))
         }
-        Questioned(atom) => {
-            Some(match_atom(atom, s).unwrap_or((String::new(), s.to_string())))
-        }
+        Questioned(atom) => Some(match_atom(atom, s).unwrap_or((String::new(), s.to_string()))),
     }
 }
 
@@ -99,7 +97,6 @@ pub fn find(expr: &Expr, s: &str) -> Option<(String, u32)> {
         if let Some(matched) = match_regex(expr, &s[i..]) {
             return Some((matched, i as u32));
         }
-
     }
     None
 }
@@ -117,7 +114,9 @@ mod match_tests {
         assert_eq!(remaining, String::from("pple"));
 
         assert!(match_character(&ACh('l'), "apple").is_none());
-        assert!(match_character(&Class(false, AllowedChars::Unrestricted), "some string").is_none());
+        assert!(
+            match_character(&Class(false, AllowedChars::Unrestricted), "some string").is_none()
+        );
     }
 
     #[test]
@@ -125,9 +124,11 @@ mod match_tests {
         use std::collections::HashSet;
 
         let chars = "iclICL".chars().collect::<HashSet<char>>();
-        let (matched, remaining) =
-            match_character_class(&Class(false, AllowedChars::Restricted(chars.clone())), "icl")
-                .expect("Failure with char class");
+        let (matched, remaining) = match_character_class(
+            &Class(false, AllowedChars::Restricted(chars.clone())),
+            "icl",
+        )
+        .expect("Failure with char class");
 
         assert_eq!(matched, String::from("i"));
         assert_eq!(remaining, String::from("cl"));
@@ -244,11 +245,9 @@ mod match_tests {
             TOp(Plus(ACh('e'))),
             TAtom(ACh('t')),
         ];
-        let (matched, remaining) = match_expression(
-            &yeet_regex,
-            "yeeeeeeeeeeeet is a thing lame people say",
-        )
-        .expect("Failure with expression");
+        let (matched, remaining) =
+            match_expression(&yeet_regex, "yeeeeeeeeeeeet is a thing lame people say")
+                .expect("Failure with expression");
 
         assert_eq!(matched, String::from("yeeeeeeeeeeeet"));
         assert_eq!(remaining, String::from(" is a thing lame people say"));
@@ -265,11 +264,7 @@ mod match_tests {
             TAtom(ACh('t')),
         ];
 
-        assert!(match_regex(
-            &yeet_regex,
-            "The word 'yeet' is a thing lame people say"
-        )
-        .is_none());
+        assert!(match_regex(&yeet_regex, "The word 'yeet' is a thing lame people say").is_none());
         assert_eq!(
             match_regex(&yeet_regex, "yeeet!"),
             Some(String::from("yeeet"))
@@ -286,17 +281,10 @@ mod match_tests {
         ];
 
         assert_eq!(
-            find(
-                &yeet_regex,
-                "The word 'yeet' is a thing lame people say"
-            ),
+            find(&yeet_regex, "The word 'yeet' is a thing lame people say"),
             Some((String::from("yeet"), 10))
         );
 
-        assert!(find(
-            &yeet_regex,
-            "The word 'yet' is a thing normal people say"
-        )
-        .is_none());
+        assert!(find(&yeet_regex, "The word 'yet' is a thing normal people say").is_none());
     }
 }
