@@ -13,7 +13,7 @@ pub enum Lexeme {
 }
 
 fn lex_class(s: &str) -> Result<(String, Vec<Lexeme>), &'static str> {
-    let mut lexed: Vec<Lexeme> = vec![];
+    let mut lexed = vec![];
     let mut iterator = s.chars();
 
     while let Some(c) = iterator.next() {
@@ -45,7 +45,7 @@ fn lex_class(s: &str) -> Result<(String, Vec<Lexeme>), &'static str> {
 }
 
 pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
-    let mut lexed: Vec<Lexeme> = vec![];
+    let mut lexed = vec![];
     let mut bracket_stack = VecDeque::new();
 
     let mut s = s.to_string();
@@ -58,13 +58,9 @@ pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
 
             let (remainder, subclass) = lex_class(iterator.as_str())?;
             lexed.extend(subclass);
-            s = remainder.clone(); // TODO this is unsatisfactory. Probably a fix with lifetimes
+            s = remainder.clone();
             iterator = s.chars();
-
-            continue;
-        }
-
-        if c == '\\' {
+        } else if c == '\\' {
             match iterator.next() {
                 Some(next) => {
                     if "wbdsWBDS".contains(next) {
@@ -75,37 +71,37 @@ pub fn lex(s: &str) -> Result<Vec<Lexeme>, &'static str> {
                 }
                 None => return Err("Class cannot end with single backslash"),
             }
-            continue;
+        } else {
+            let lexeme = match c {
+                '(' => {
+                    bracket_stack.push_back(LRound);
+                    LRound
+                }
+                ')' => {
+                    if let Some(LRound) = bracket_stack.back() {
+                        bracket_stack.pop_back();
+                        RRound
+                    } else {
+                        return Err("Mismatched round brackets");
+                    }
+                }
+                ']' => {
+                    if let Some(LSquare) = bracket_stack.back() {
+                        bracket_stack.pop_back();
+                        RSquare
+                    } else {
+                        return Err("Mismatched square brackets");
+                    }
+                }
+                '+' | '?' | '*' => Op(c),
+                '.' => Meta(c),
+                _ => Ch(c),
+            };
+
+            lexed.push(lexeme);
         }
-
-        let lexeme = match c {
-            '(' => {
-                bracket_stack.push_back(LRound);
-                LRound
-            }
-            ')' => {
-                if let Some(LRound) = bracket_stack.back() {
-                    bracket_stack.pop_back();
-                    RRound
-                } else {
-                    return Err("Mismatched round brackets");
-                }
-            }
-            ']' => {
-                if let Some(LSquare) = bracket_stack.back() {
-                    bracket_stack.pop_back();
-                    RSquare
-                } else {
-                    return Err("Mismatched square brackets");
-                }
-            }
-            '+' | '?' | '*' => Op(c),
-            '.' => Meta(c),
-            _ => Ch(c),
-        };
-
-        lexed.push(lexeme);
     }
+
     if !bracket_stack.is_empty() {
         Err("Mismatched brackets")
     } else {

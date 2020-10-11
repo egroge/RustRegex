@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use Atom::*;
 
 pub type Expr = Vec<Term>;
+type OpFunc = dyn Fn(Atom) -> Operation;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Term {
@@ -32,7 +33,8 @@ pub enum Atom {
     SubExpr(Expr), // Does not currently support non capture groups
 }
 
-fn parse_range(lexed: &Vec<Lexeme>) -> Option<HashSet<char>> {
+fn parse_range(lexed: &[Lexeme]) -> Option<HashSet<char>> {
+    // PRE: lexed has size >= 3
     if let Op('-') = lexed[1] {
         if let Ch(lower) = lexed[0] {
             if let Ch(upper) = lexed[2] {
@@ -46,20 +48,19 @@ fn parse_range(lexed: &Vec<Lexeme>) -> Option<HashSet<char>> {
     None
 }
 
-fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(Vec<Lexeme>, HashSet<char>), &'static str> {
-    let digits = (0..10)
-        .map(|x| std::char::from_digit(x, 10).unwrap())
-        .collect();
+fn parse_class_member(lexed: &[Lexeme]) -> Result<(Vec<Lexeme>, HashSet<char>), &'static str> {
+    let digits = "0123456789".chars().collect();
 
     let latin = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
         .chars()
         .collect();
 
+    let whitespace = " \t".chars().collect();
+
     if lexed.len() >= 3 {
         // Possible that there is a range
-        let possible_range = parse_range(&lexed);
-        if possible_range.is_some() {
-            return Ok((lexed[3..].to_vec(), possible_range.unwrap()));
+        if let Some(range) = parse_range(&lexed) {
+            return Ok((lexed[3..].to_vec(), range));
         }
     }
 
@@ -69,12 +70,16 @@ fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(Vec<Lexeme>, HashSet<char>
         RSquare => Ok((remaining, HashSet::new())),
         Meta(c) => match c {
             'd' => Ok((remaining, digits)),
-            's' => Ok((remaining, [' ', '\t'].iter().cloned().collect())), // idk what else
+            's' => Ok((remaining, whitespace)),
             'w' => Ok((remaining, digits.union(&latin).cloned().collect())),
-            'b' => Ok((remaining, ['\n'].iter().cloned().collect())), // pretty sure this is wrong
+            'b' => Ok((remaining, "\n".chars().collect())),
             _ => Err("Unknown meta token in character class!"),
         },
-        Ch(c) => Ok((remaining, [*c].iter().cloned().collect())),
+        Ch(c) => {
+            let mut set = HashSet::new();
+            set.insert(*c);
+            Ok((remaining, set))
+        }
         t => {
             println!("Token: {:?}", t);
             Err("Misplaced token in character class!")
@@ -85,14 +90,10 @@ fn parse_class_member(lexed: &Vec<Lexeme>) -> Result<(Vec<Lexeme>, HashSet<char>
 fn parse_character_class(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
     assert!(!lexed.is_empty());
 
-    let mut lexed = lexed;
-    // Rust does not seem to support inverted = let Op = lexed[0]; :(
-    let inverted: bool;
-    if let Op('^') = &lexed[0] {
-        lexed = lexed[1..].to_vec();
-        inverted = true;
+    let (mut lexed, inverted) = if let Op('^') = &lexed[0] {
+        (lexed[1..].to_vec(), true)
     } else {
-        inverted = false;
+        (lexed, false)
     };
 
     // Should not have to check i < len() since bracketing should be correct
@@ -115,7 +116,7 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
         LSquare => Ok(parse_character_class(lexed[1..].to_vec())?),
         Ch(c) => Ok((lexed[1..].to_vec(), ACh(*c))),
         Meta(c) => {
-            return if *c == '.' {
+            if *c == '.' {
                 Ok((
                     lexed[1..].to_vec(),
                     Class(false, AllowedChars::Unrestricted),
@@ -123,25 +124,23 @@ fn parse_atom(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Atom), &'static str> {
             } else {
                 let (remaining, chars) = parse_class_member(&lexed)?;
                 Ok((remaining, Class(false, AllowedChars::Restricted(chars))))
-            };
+            }
         }
         LRound => {
             let (remaining, expr) = parse_expression(lexed[1..].to_vec())?;
             Ok((remaining, SubExpr(expr)))
         }
-        _ => Err("Non atom found")?,
+        _ => Err("Non atom found"),
     }
 }
 
-fn parse_operation(
-    lexed: Vec<Lexeme>,
-) -> Result<(Vec<Lexeme>, Box<dyn Fn(Atom) -> Operation>), &'static str> {
+fn parse_operation(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Box<OpFunc>), &'static str> {
     let remaining = lexed[1..].to_vec();
 
     match lexed[0] {
-        Op('+') => Ok((remaining, Box::new(|a| Operation::Plus(a)))),
-        Op('?') => Ok((remaining, Box::new(|a| Operation::Questioned(a)))),
-        Op('*') => Ok((remaining, Box::new(|a| Operation::Star(a)))),
+        Op('+') => Ok((remaining, Box::new(Operation::Plus))),
+        Op('?') => Ok((remaining, Box::new(Operation::Questioned))),
+        Op('*') => Ok((remaining, Box::new(Operation::Star))),
         Op(_) => Err("Unsupported operation"),
         _ => Err("Not an operation"),
     }
@@ -176,10 +175,9 @@ fn parse_expression(lexed: Vec<Lexeme>) -> Result<(Vec<Lexeme>, Expr), &'static 
 
         // Unfortunately rust does not yet support the more elegant pattern matched version of
         // this
-        let term = parse_term(lexed)?;
-        lexed = term.0;
-        let term = term.1;
-        expr.push(term);
+        let result = parse_term(lexed)?;
+        lexed = result.0;
+        expr.push(result.1);
     }
 
     Ok((lexed, expr))
@@ -189,9 +187,9 @@ pub fn parse(lexed: Vec<Lexeme>) -> Result<Expr, &'static str> {
     let (remaining, parsed) = parse_expression(lexed)?;
 
     if !remaining.is_empty() {
-        return Err("Some of expression was left over after parsing. Is it malformed?");
+        Err("Some of expression was left over after parsing. Is it malformed?")
     } else {
-        return Ok(parsed);
+        Ok(parsed)
     }
 }
 

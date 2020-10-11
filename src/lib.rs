@@ -7,6 +7,7 @@ mod parser;
 #[path = "utils/matcher.rs"]
 mod matcher;
 
+#[allow(clippy::ptr_arg)]
 pub fn search(regex: &parser::Expr, search_space: &str) -> Option<(String, u32)> {
     matcher::find(regex, search_space)
 }
@@ -43,9 +44,6 @@ mod full_test {
             search(&kenobi_regex, "is he there?! general kenobi."),
             Some((String::from(" there?!"), 5))
         );
-        assert_eq!(
-            search(&kenobi_regex, "is he here?! general kenobi?"),
-            None
-        );
+        assert_eq!(search(&kenobi_regex, "is he here?! general kenobi?"), None);
     }
 }

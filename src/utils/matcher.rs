@@ -1,5 +1,5 @@
 use crate::parser;
-use parser::{AllowedChars, Atom, Atom::*, Expr, Operation, Operation::*, Term, Term::*};
+use parser::{AllowedChars, Atom, Atom::*, Operation, Operation::*, Term, Term::*};
 
 fn match_character(ch: &Atom, s: &str) -> Option<(String, String)> {
     match ch {
@@ -11,7 +11,7 @@ fn match_character(ch: &Atom, s: &str) -> Option<(String, String)> {
                 None
             }
         }
-        _ => None, // TODO should this be a panic instead?
+        _ => None,
     }
 }
 
@@ -19,14 +19,7 @@ fn match_character_class(class: &Atom, s: &str) -> Option<(String, String)> {
     let first = s.chars().next()?;
     let matched = (first.to_string(), s[1..].to_string());
     match class {
-        Class(inverted, AllowedChars::Unrestricted) => {
-            if *inverted {
-                // no character accepted
-                None
-            } else {
-                Some(matched) // Any character accepted
-            }
-        }
+        Class(false, AllowedChars::Unrestricted) => Some(matched),
         Class(inverted, AllowedChars::Restricted(chars)) => {
             if chars.contains(&first) ^ inverted {
                 Some(matched)
@@ -56,17 +49,11 @@ fn match_op(op: &Operation, s: &str) -> Option<(String, String)> {
         }
         Star(atom) => {
             let (mut matched, mut remaining) = (String::new(), s.to_string());
-            for _ in s.chars() {
-                let result = match_atom(atom, remaining.as_str());
-                if result.is_some() {
-                    let result = result.unwrap();
-                    matched = format!("{}{}", matched, result.0);
-                    remaining = result.1;
-                } else {
-                    break;
-                }
+            while let Some((next_match, remains)) = match_atom(atom, remaining.as_str()) {
+                matched = format!("{}{}", matched, next_match);
+                remaining = remains;
             }
-            Some((matched.to_string(), remaining.to_string()))
+            Some((matched, remaining))
         }
         Questioned(atom) => Some(match_atom(atom, s).unwrap_or((String::new(), s.to_string()))),
     }
@@ -79,7 +66,7 @@ fn match_term(term: &Term, s: &str) -> Option<(String, String)> {
     }
 }
 
-fn match_expression(expr: &Expr, s: &str) -> Option<(String, String)> {
+fn match_expression(expr: &[Term], s: &str) -> Option<(String, String)> {
     expr.iter()
         .fold(Some((String::new(), s.to_string())), |acc, term| {
             let (matched, remaining) = acc?;
@@ -88,11 +75,11 @@ fn match_expression(expr: &Expr, s: &str) -> Option<(String, String)> {
         })
 }
 
-fn match_regex(expr: &Expr, s: &str) -> Option<String> {
+fn match_regex(expr: &[Term], s: &str) -> Option<String> {
     Some(match_expression(expr, s)?.0)
 }
 
-pub fn find(expr: &Expr, s: &str) -> Option<(String, u32)> {
+pub fn find(expr: &[Term], s: &str) -> Option<(String, u32)> {
     for i in 0..s.len() {
         if let Some(matched) = match_regex(expr, &s[i..]) {
             return Some((matched, i as u32));
